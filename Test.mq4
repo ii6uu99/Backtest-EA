@@ -24,6 +24,7 @@ sinput int ATRPeriod = 14;
 double myATR;
 double stopLoss;
 double takeProfit;
+double myLots;
 
 
 //+------------------------------------------------------------------+
@@ -129,6 +130,43 @@ double getFixLot(double stopInPips){
    return lot;
 }
 
+double getHalfFixLot(double stopInPips){
+   
+   double lot = 0.01;
+   
+   double tickValue = MarketInfo(_Symbol, MODE_TICKVALUE);
+   if(Point == 0.001 || Point == 0.00001){ 
+      tickValue *= 10;
+   }
+   
+   double lotSize = MarketInfo(Symbol(),MODE_LOTSIZE);
+   
+   double LotStep = MarketInfo(_Symbol, MODE_LOTSTEP);
+   int    Decimals = 0;
+   if(LotStep == 0.1){
+      Decimals = 1;
+   }
+   else if(LotStep == 0.01){
+      Decimals = 2;
+   }
+   
+   double accountValue = initialDeposit;
+   double valuePerPip = (initialDeposit*(RiskPercent/2/100))/stopInPips;
+   lot = valuePerPip/tickValue;
+   lot = StrToDouble(DoubleToStr(lot,Decimals));
+   
+   double myMaxLot = MarketInfo(_Symbol, MODE_MAXLOT);
+   double myMinLot = MarketInfo(_Symbol, MODE_MINLOT);
+   if (lot < myMinLot){ 
+      lot = myMinLot;
+   }
+   if (lot > myMaxLot){ 
+      lot = myMaxLot;
+   }
+
+   return lot;
+}
+
 
 //ATR
 void updateValues(){
@@ -138,7 +176,7 @@ void updateValues(){
    }
    myATR = iATR(NULL, 0, ATRPeriod, 1)/point;
    takeProfit = myATR * TakeProfitPercent/100.0;
-   stopLoss = myATR * StopLossPercent/100.0;    
+   stopLoss = myATR * StopLossPercent/100.0;
 }
 
 double ATRDistanceToBaseline(int order){
@@ -162,27 +200,29 @@ int getBaselineValue(){}
 
 int getBaselineFirstCross(){}
 
+int getExitSignal(){}
+
 
 //SIGNAL
 int checkForSignal(){
    if((getConfirmationFirstCross() == LONG) || (getConfirmationFirstCross() == SHORT)){
-      getConfirmationEntry()
+      getConfirmationEntry();
    }
    else if ((getBaselineFirstCross() == LONG) || (getBaselineFirstCross() == SHORT)){
-      getBaselineEntry()
+      getBaselineEntry();
    }
    else return FLAT;
 } 
 
 int getConfirmationEntry(){
-   updateValues()
+   updateValues();
    if((getVolumeCondition == LONG) && (getBaselineCondition == LONG) && (ATRDistanceToBaseline(LONG) <= myATR)) return LONG;
    else if((getVolumeCondition == SHORT) && (getBaselineCondition == SHORT) && (ATRDistanceToBaseline(SHORT) <= myATR)) return SHORT;
    else return FLAT;
 }
 
 int getBaselineEntry(){
-   updateValues()
+   updateValues();
    if(getConfirmationCondition == SHORT &&
       getVolumeCondition == SHORT &&
       getConfirmationSevenCandlesPriorCondition == LONG &&
@@ -194,4 +234,78 @@ int getBaselineEntry(){
             ATRDistanceToBaseline(LONG) <= myATR)
             return LONG; 
    else return FLAT;
+}
+
+
+//OPENING TRADE
+void checkForOpen(){
+   myLots = getHalfFixLot();
+   
+   signal = checkForSignal();
+   
+   if(signal == LONG){
+      openTPTrade(LONG);
+      openNoTPTrade(LONG);
+      return;
+   }
+   
+   else if(signal == SHORT){
+      openTPTrade(SHORT);
+      openNoTPTrade(SHORT);
+      return;
+   }
+   
+   else return;
+}
+
+void openTPTrade(int signal){
+   if(signal == LONG){
+      ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,Ask+takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Green);
+      if(ticket>0)
+           {
+            if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
+               Print("BUY order opened : ",OrderOpenPrice());
+           }
+      else
+         Print("Error opening BUY order : ",GetLastError());
+      return;
+   }
+   
+   if(signal == SHORT){
+      ticket = ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,Bid-takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Red);
+      if(ticket>0)
+           {
+            if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
+               Print("BUY order opened : ",OrderOpenPrice());
+           }
+      else
+         Print("Error opening BUY order : ",GetLastError());
+      return;         
+   }
+}
+
+void openNoTPTrade(int signal){
+   if(signal == LONG){
+      ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Green);
+      if(ticket>0)
+           {
+            if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
+               Print("BUY order opened : ",OrderOpenPrice());
+           }
+      else
+         Print("Error opening BUY order : ",GetLastError());
+      return;
+   }
+   
+   if(signal == SHORT){
+      ticket = ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Red);
+      if(ticket>0)
+           {
+            if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
+               Print("BUY order opened : ",OrderOpenPrice());
+           }
+      else
+         Print("Error opening BUY order : ",GetLastError());
+      return;         
+   }  
 }
