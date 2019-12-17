@@ -12,6 +12,8 @@
 #define FLAT 0
 #define LONG 1
 #define SHORT 2
+#define EXITLONG 3
+#define EXITSHORT 4
 
 //INPUT
 sinput double RiskPercent = 2;
@@ -50,8 +52,14 @@ void OnDeinit(const int reason)
 //+------------------------------------------------------------------+
 void OnTick()
   {
+//--- check for history and trading
+   if(Bars<100 || IsTradeAllowed()==false)
+      return;
+//--- calculate open orders by current symbol
+   if(CalculateCurrentOrders(Symbol())==0) CheckForOpen();
+   else                                    CheckForClose();
 //---
-   
+
   }
 //+------------------------------------------------------------------+
 
@@ -78,6 +86,42 @@ double getFractionLots(double stopInPips){
 
    double accountValue = AccountBalance();
    double valuePerPip = (accountValue*(RiskPercent/100))/stopInPips;
+   lot = valuePerPip/tickValue;
+   lot = StrToDouble(DoubleToStr(lot,Decimals));
+   
+   double myMaxLot = MarketInfo(_Symbol, MODE_MAXLOT);
+   double myMinLot = MarketInfo(_Symbol, MODE_MINLOT);
+   if (lot < myMinLot){ 
+      lot = myMinLot;
+   }
+   if (lot > myMaxLot){ 
+      lot = myMaxLot;
+   }
+
+   return lot;
+}
+
+double getHalfFractionLots(double stopInPips){
+   double lot = 0.01;
+   
+   double tickValue = MarketInfo(_Symbol, MODE_TICKVALUE);
+   if(Point == 0.001 || Point == 0.00001){ 
+      tickValue *= 10;
+   }
+   
+   double lotSize = MarketInfo(Symbol(),MODE_LOTSIZE);
+   
+   double LotStep = MarketInfo(_Symbol, MODE_LOTSTEP);
+   int    Decimals = 0;
+   if(LotStep == 0.1){
+      Decimals = 1;
+   }
+   else if(LotStep == 0.01){
+      Decimals = 2;
+   }
+
+   double accountValue = AccountBalance();
+   double valuePerPip = (accountValue*(RiskPercent/2/100))/stopInPips;
    lot = valuePerPip/tickValue;
    lot = StrToDouble(DoubleToStr(lot,Decimals));
    
@@ -186,9 +230,11 @@ double ATRDistanceToBaseline(int order){
 
 
 //INDICATORS
-int getConfirmationCondition(){}
-
 int getConfirmationFirstCross(){}
+
+int getBaselineFirstCross(){}
+
+int getConfirmationCondition(){}
 
 int getConfirmationSevenCandlesPriorCondition(){}
 
@@ -196,12 +242,9 @@ int getVolumeCondition(){}
 
 int getBaselineCondition(){}
 
-int getBaselineValue(){}
-
-int getBaselineFirstCross(){}
-
 int getExitSignal(){}
 
+double getBaselineValue(){}
 
 //SIGNAL
 int checkForSignal(){
@@ -239,6 +282,7 @@ int getBaselineEntry(){
 
 //OPENING TRADE
 void checkForOpen(){
+   if(Volume[0]>1) return;
    myLots = getHalfFixLot();
    
    signal = checkForSignal();
@@ -259,6 +303,7 @@ void checkForOpen(){
 }
 
 void openTPTrade(int signal){
+   updateValues()
    if(signal == LONG){
       ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,Ask+takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
@@ -285,6 +330,7 @@ void openTPTrade(int signal){
 }
 
 void openNoTPTrade(int signal){
+   updateValues()
    if(signal == LONG){
       ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
@@ -308,4 +354,54 @@ void openNoTPTrade(int signal){
          Print("Error opening BUY order : ",GetLastError());
       return;         
    }  
+}
+
+
+//CALCULATE TRADES
+int CalculateCurrentOrders(string symbol)
+  {
+   int buys=0,sells=0;
+//---
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
+      if(OrderSymbol()==Symbol() && OrderMagicNumber()==MAGICNUM)
+        {
+         if(OrderType()==OP_BUY)  buys++;
+         if(OrderType()==OP_SELL) sells++;
+        }
+     }
+//--- return orders volume
+   if(buys>0) return(buys);
+   else       return(-sells);
+  }
+  
+
+//CLOSING TRADES
+void checkForClose(){
+   if(Volume[0]>1) return;
+   for(int i=0;i<OrdersTotal();i++)
+     {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
+      if(OrderMagicNumber()!=MAGICNUM || OrderSymbol()!=Symbol()) continue;
+      //--- check order type 
+      if(OrderType()==OP_BUY)
+        {
+         if(getExitSignal()==EXITLONG)
+           {
+            if(!OrderClose(OrderTicket(),OrderLots(),Bid,3,White))
+               Print("OrderClose error ",GetLastError());
+           }
+         break;
+        }
+      if(OrderType()==OP_SELL)
+        {
+         if(getExitSignal()==EXITSHORT)
+           {
+            if(!OrderClose(OrderTicket(),OrderLots(),Ask,3,White))
+               Print("OrderClose error ",GetLastError());
+           }
+         break;
+        }
+     }
 }
