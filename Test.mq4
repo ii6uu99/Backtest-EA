@@ -55,6 +55,10 @@ void OnTick()
 //--- check for history and trading
    if(Bars<100 || IsTradeAllowed()==false)
       return;
+//---check and move stoploss to breakeven      
+   moveStopToBreakEven()
+//---check trailing stop
+   trailingStop()
 //--- calculate open orders by current symbol
    if(CalculateCurrentOrders(Symbol())==0) CheckForOpen();
    else                                    CheckForClose();
@@ -259,8 +263,8 @@ int checkForSignal(){
 
 int getConfirmationEntry(){
    updateValues();
-   if((getVolumeCondition == LONG) && (getBaselineCondition == LONG) && (ATRDistanceToBaseline(LONG) <= myATR)) return LONG;
-   else if((getVolumeCondition == SHORT) && (getBaselineCondition == SHORT) && (ATRDistanceToBaseline(SHORT) <= myATR)) return SHORT;
+   if(getVolumeCondition == LONG && getBaselineCondition == LONG && ATRDistanceToBaseline(LONG) <= myATR) return LONG;
+   else if(getVolumeCondition == SHORT && getBaselineCondition == SHORT && ATRDistanceToBaseline(SHORT) <= myATR) return SHORT;
    else return FLAT;
 }
 
@@ -305,7 +309,7 @@ void checkForOpen(){
 void openTPTrade(int signal){
    updateValues()
    if(signal == LONG){
-      ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,Ask+takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Green);
+      ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,Ask+takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
            {
             if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
@@ -317,7 +321,7 @@ void openTPTrade(int signal){
    }
    
    if(signal == SHORT){
-      ticket = ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,Bid-takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Red);
+      ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,Bid-takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Red);
       if(ticket>0)
            {
             if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
@@ -332,7 +336,7 @@ void openTPTrade(int signal){
 void openNoTPTrade(int signal){
    updateValues()
    if(signal == LONG){
-      ticket = ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Green);
+      ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
            {
             if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
@@ -344,7 +348,7 @@ void openNoTPTrade(int signal){
    }
    
    if(signal == SHORT){
-      ticket = ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Red);
+      ticket=OrderSend(Symbol(),OP_SELL,myLots,Bid,3,Bid+stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Red);
       if(ticket>0)
            {
             if(OrderSelect(ticket,SELECT_BY_TICKET,MODE_TRADES))
@@ -359,29 +363,29 @@ void openNoTPTrade(int signal){
 
 //CALCULATE TRADES
 int CalculateCurrentOrders(string symbol)
-  {
+{
    int buys=0,sells=0;
 //---
    for(int i=0;i<OrdersTotal();i++)
-     {
+   {
       if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
       if(OrderSymbol()==Symbol() && OrderMagicNumber()==MAGICNUM)
-        {
+      {
          if(OrderType()==OP_BUY)  buys++;
          if(OrderType()==OP_SELL) sells++;
-        }
-     }
+      }
+   }
 //--- return orders volume
    if(buys>0) return(buys);
    else       return(-sells);
-  }
+}
   
 
 //CLOSING TRADES
 void checkForClose(){
    if(Volume[0]>1) return;
    for(int i=0;i<OrdersTotal();i++)
-     {
+   {
       if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
       if(OrderMagicNumber()!=MAGICNUM || OrderSymbol()!=Symbol()) continue;
       //--- check order type 
@@ -403,5 +407,48 @@ void checkForClose(){
            }
          break;
         }
-     }
+   }
+}
+
+
+void moveStopToBreakEven(){
+   for(int i=0;i<OrdersTotal();i++)
+   {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
+      if(OrderMagicNumber()!=MAGICNUM || OrderSymbol()!=Symbol()) continue;
+      int ticket = OrderTicket();
+      int type = OrderType();
+      double OP = OrderOpenPrice();
+      double SL = OrderStopLoss();
+      if(type == OP_BUY && SL < OP && Bid >= OP+(OP-SL)) OrderModify(ticket,OP,OP,0,0,Blue);
+      else if(type == OP_SELL && SL > OP && Ask <= OP-(SL-OP)) OrderModify(ticket,OP,OP,0,0,Blue);
+   } 
+}
+
+
+void trailingStop(){
+   if(Volume[0]>1) return
+   for(int i=0;i<OrdersTotal();i++)
+   {
+      if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
+      if(OrderMagicNumber()!=MAGICNUM || OrderSymbol()!=Symbol()) continue;
+      int ticket = OrderTicket();
+      int type = OrderType();
+      double OP = OrderOpenPrice();
+      double SL = OrderStopLoss();
+      if(type == OP_BUY && Bid >= OP + (2*(OP-SL))){
+         updateValues();
+         double TS = Bid - (1.5*myATR*10*Point);
+         if(SL < TS){
+            OrderModify(ticket,OP,TS,0,0,Yellow);
+         }
+      }
+      else if(type == OP_SELL && Ask <= OP - (2*(SL-OP))){
+         updateValues();
+         double TS = Ask + (1.5*myATR*10*Point);
+         if(SL > TS){
+            OrderModify(ticket,OP,TS,0,0,Yellow);
+         }
+      }
+   }
 }
