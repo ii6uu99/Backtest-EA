@@ -56,12 +56,12 @@ void OnTick()
    if(Bars<100 || IsTradeAllowed()==false)
       return;
 //---check and move stoploss to breakeven      
-   moveStopToBreakEven()
+   moveStopToBreakEven();
 //---check trailing stop
-   trailingStop()
+   trailingStop();
 //--- calculate open orders by current symbol
-   if(CalculateCurrentOrders(Symbol())==0) CheckForOpen();
-   else                                    CheckForClose();
+   if(CalculateCurrentOrders(Symbol())==0) checkForOpen();
+   else                                    checkForClose();
 //---
 
   }
@@ -218,7 +218,7 @@ double getHalfFixLot(double stopInPips){
 
 //ATR
 void updateValues(){
-   double point = Point
+   double point = Point;
    if(Point == 0.001 || Point == 0.00001){ 
       point *= 10;
    }
@@ -228,8 +228,8 @@ void updateValues(){
 }
 
 double ATRDistanceToBaseline(int order){
-   if (order == LONG) return (Ask - getBaselineValue()) / (Point/10);
-   else if (order == SHORT) return (getBaselineValue() - Bid) / (Point/10);
+   if(order == LONG) return (Ask - getBaselineValue()) / (Point/10);
+   return (getBaselineValue() - Bid) / (Point/10);
 }
 
 
@@ -253,31 +253,31 @@ double getBaselineValue(){}
 //SIGNAL
 int checkForSignal(){
    if((getConfirmationFirstCross() == LONG) || (getConfirmationFirstCross() == SHORT)){
-      getConfirmationEntry();
+      return getConfirmationEntry();
    }
    else if ((getBaselineFirstCross() == LONG) || (getBaselineFirstCross() == SHORT)){
-      getBaselineEntry();
+      return getBaselineEntry();
    }
    else return FLAT;
 } 
 
 int getConfirmationEntry(){
    updateValues();
-   if(getVolumeCondition == LONG && getBaselineCondition == LONG && ATRDistanceToBaseline(LONG) <= myATR) return LONG;
-   else if(getVolumeCondition == SHORT && getBaselineCondition == SHORT && ATRDistanceToBaseline(SHORT) <= myATR) return SHORT;
+   if(getVolumeCondition() == LONG && getBaselineCondition() == LONG && ATRDistanceToBaseline(LONG) <= myATR) return LONG;
+   else if(getVolumeCondition() == SHORT && getBaselineCondition() == SHORT && ATRDistanceToBaseline(SHORT) <= myATR) return SHORT;
    else return FLAT;
 }
 
 int getBaselineEntry(){
    updateValues();
-   if(getConfirmationCondition == SHORT &&
-      getVolumeCondition == SHORT &&
-      getConfirmationSevenCandlesPriorCondition == LONG &&
+   if(getConfirmationCondition() == SHORT &&
+      getVolumeCondition() == SHORT &&
+      getConfirmationSevenCandlesPriorCondition() == LONG &&
       ATRDistanceToBaseline(SHORT) <= myATR)
       return SHORT;
-   else if( getConfirmationCondition == LONG &&
-            getVolumeCondition == LONG &&
-            getConfirmationSevenCandlesPriorCondition == SHORT &&
+   else if( getConfirmationCondition() == LONG &&
+            getVolumeCondition() == LONG &&
+            getConfirmationSevenCandlesPriorCondition() == SHORT &&
             ATRDistanceToBaseline(LONG) <= myATR)
             return LONG; 
    else return FLAT;
@@ -287,9 +287,10 @@ int getBaselineEntry(){
 //OPENING TRADE
 void checkForOpen(){
    if(Volume[0]>1) return;
-   myLots = getHalfFixLot();
+   updateValues();
+   myLots = getHalfFixLot(stopLoss);
    
-   signal = checkForSignal();
+   int signal = checkForSignal();
    
    if(signal == LONG){
       openTPTrade(LONG);
@@ -307,7 +308,8 @@ void checkForOpen(){
 }
 
 void openTPTrade(int signal){
-   updateValues()
+   updateValues();
+   int ticket = 0;
    if(signal == LONG){
       ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,Ask+takeProfit*10*Point,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
@@ -334,7 +336,8 @@ void openTPTrade(int signal){
 }
 
 void openNoTPTrade(int signal){
-   updateValues()
+   updateValues();
+   int ticket = 0;
    if(signal == LONG){
       ticket=OrderSend(Symbol(),OP_BUY,myLots,Ask,3,Ask-stopLoss*10*Point,0,"Backtest EA",MAGICNUM,0,Green);
       if(ticket>0)
@@ -427,7 +430,7 @@ void moveStopToBreakEven(){
 
 
 void trailingStop(){
-   if(Volume[0]>1) return
+   if(Volume[0]>1) return;
    for(int i=0;i<OrdersTotal();i++)
    {
       if(OrderSelect(i,SELECT_BY_POS,MODE_TRADES)==false) break;
